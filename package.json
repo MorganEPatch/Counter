@@ -1,0 +1,46 @@
+{
+  "name": "counter",
+  "version": "1.0.0",
+  "description": "A simple, complete ExpressJS app which counts upwards",
+  "main": "app.js",
+  "directories": {
+    "lib": "src"
+  },
+  "private": true,
+  "scripts": {
+    "start": "node ./src/app.js",
+    "devel": "nodemon ./src/app.js",
+    "linter": "jshint ./src ./tests ./scripts && eslint ./src ./tests ./scripts",
+    "test": "TEST=true CONSOLE=true NODE_ENV=mocha_sqlite PORT=8851 DEBUG=true mocha tests",
+    "test_pg": "NODE_ENV=mocha knex migrate:latest && TEST=true CONSOLE=true NODE_ENV=mocha PORT=8851 DEBUG=true mocha tests",
+    "coverage": "TEST=true CONSOLE=true NODE_ENV=mocha_sqlite PORT=8851 DEBUG=true node ./node_modules/istanbul/lib/cli.js cover _mocha -- tests",
+    "latte": "sh ./scripts/latte.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lyonesgamer/Counter.git"
+  },
+  "license": "MIT",
+  "homepage": "https://counter.lyonesgamer.com/",
+  "author": "Morgan Patch <me@lyonesgamer.com>",
+  "jsHintConfig": ".jshintrc",
+  "dependencies": {
+    "body-parser": "~1.18.2",
+    "cors": "~2.8.4",
+    "express": "~4.16.2",
+    "helmet": "~3.9.0",
+    "knex": "~0.14.0",
+    "pg": "~7.4.0",
+    "sqlite3": "~3.1.13"
+  },
+  "devDependencies": {
+    "chai": "~4.1.2",
+    "eslint": "~4.11.0",
+    "istanbul": "~0.4.5",
+    "jshint": "~2.9.5",
+    "mocha": "~4.0.1",
+    "nodemon": "~1.12.1",
+    "request": "~2.83.0",
+    "sql-fixtures": "~1.0.0"
+  }
+}
