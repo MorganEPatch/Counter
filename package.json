@@ -14,7 +14,9 @@
     "test": "TEST=true CONSOLE=true NODE_ENV=mocha_sqlite PORT=8851 DEBUG=true mocha tests --exit",
     "test_pg": "NODE_ENV=mocha knex migrate:latest && TEST=true CONSOLE=true NODE_ENV=mocha PORT=8851 DEBUG=true mocha tests --exit",
     "coverage": "TEST=true CONSOLE=true NODE_ENV=mocha_sqlite PORT=8851 DEBUG=true nyc npm run test --exit",
-    "latte": "sh ./scripts/latte.sh"
+    "latte": "sh ./scripts/latte.sh",
+    "migrate": "knex migrate:latest",
+    "cleardb": "node ./scripts/clear-database.sh"
   },
   "repository": {
     "type": "git",
