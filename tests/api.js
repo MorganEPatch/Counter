@@ -1,71 +1,156 @@
 'use strict';
 
-const request = require('request');
+const axios = require('axios');
 const expect = require('chai').expect;
 
 const knexfile = require('../knexfile');
 const knex = require('knex')(knexfile[process.env.NODE_ENV]);
 
-const app = require('../src/app');
-let trx;
+const { app, server } = require('../src/app');
+let trx = null;
 
-const port = process.env.PORT || 8000;
-const baseUrl = `http://localhost:${port}/`;
+const port = app.get('port');
+const baseUrl = `http://localhost:${port}`;
 
-const transact = function transact(done) {
-  knex.transaction(function(newTrx) {
-    trx = newTrx;
-    app.set('knex', trx);
-    trx('counter').insert({count: 0}).then(function() {
-      done();
-    });
-  }).catch(function(e) {
-    // only swallow the test rollback error
-    if (e !== 'test rollback') {
-      throw e;
+const request = axios.create({
+  baseURL: baseUrl,
+  headers: {
+    Authorization:  'bearer {"active": true, "sub": "user"}',
+    'Content-Type': 'application/json',
+  },
+  responseType:     'json',
+  responseEncoding: 'utf8',
+});
+
+describe('Sanity', () => {
+  it("returns 400 if a request body can't be parsed", async () => {
+    try {
+      await request.post('/', "{'key': 'val");
+      expect.fail('Request should have failed');
+    }
+    catch (err) {
+      expect(err.response.status).to.equal(400);
     }
   });
-};
+});
 
-const endTransact = function endTransact(done) {
-  trx.rollback('test rollback').then(function() {
-    done();
-  });
-};
-
-describe('API', function() {
-  before(function(done) {
-    knex.migrate.latest().then(function() {
-      done();
-    });
+describe('API', () => {
+  before(async () => {
+    await knex.migrate.latest();
   });
 
-  beforeEach(transact);
-  afterEach(endTransact);
+  beforeEach(async () => {
+    try {
+      trx = await knex.transaction();
+      app.set('knex', trx);
+      await trx('counter').insert({ count: 0 });
+    }
+    catch (error) {
+      if (error !== 'test rollback') {
+        throw error;
+      }
+    }
+  });
+  afterEach(async () => {
+    await trx.rollback('test rollback');
+  });
 
-  it('returns a value of 0 initially', function(done) {
-    setTimeout(function() {
-      request.get(baseUrl, function(req, res, body) {
-        expect(res.statusCode).to.equal(200);
-        expect(JSON.parse(body)).to.deep.equal({count: 0});
-        done();
+  after(async () => {
+    await knex.migrate.down();
+    server.close();
+  });
+
+  it('returns a value of 0 initially', async () => {
+    const response = await request.get('/');
+    expect(response.status).to.equal(200);
+    expect(response.data).to.deep.equal({ count: 0, README: 'https://github.com/MorganEPatch/Counter' });
+  });
+
+  it('adds one to the value when POSTed', async () => {
+    let response = await request.post('/');
+    expect(response.status).to.equal(204);
+    expect(response.data).to.equal('');
+
+    response = await request.get('/');
+    expect(response.status).to.equal(200);
+    expect(response.data).to.deep.equal({ count: 1, README: 'https://github.com/MorganEPatch/Counter' });
+  });
+
+  it('resets the value on a DELETE call', async () => {
+    let response = await request.post('/');
+    expect(response.status).to.equal(204);
+    expect(response.data).to.equal('');
+
+    response = await request.get('/');
+    expect(response.status).to.equal(200);
+    expect(response.data).to.deep.equal({ count: 1, README: 'https://github.com/MorganEPatch/Counter' });
+
+    response = await request.delete('/');
+    expect(response.status).to.equal(204);
+    expect(response.data).to.equal('');
+
+    response = await request.get('/');
+    expect(response.status).to.equal(200);
+    expect(response.data).to.deep.equal({ count: 0, README: 'https://github.com/MorganEPatch/Counter' });
+  });
+
+  it('requires a bearer token for DELETE', async () => {
+    try {
+      const response = await axios.delete(baseUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        responseType:     'json',
+        responseEncoding: 'utf8',
       });
-    }, 1000);
-  });
+      expect.fail(`Request should fail with no bearer token. Response code: ${response.status}`);
+    }
+    catch (error) {
+      expect(error.response.status).to.equal(401);
+      expect(error.response.data).to.deep.equal({ error: 'Missing bearer token' });
+    }
 
-  it('adds one to the value when posted', function(done) {
-    setTimeout(function() {
-      request.post(baseUrl, function(req, res, body) {
-        expect(res.statusCode).to.equal(200);
-        expect(body).to.equal('');
+    try {
+      const response = await axios.delete(baseUrl, {
+        headers: {
+          Authorization:  'bearer {"active": false, "sub": "user"}',
+          'Content-Type': 'application/json',
+        },
+        responseType:     'json',
+        responseEncoding: 'utf8',
+      });
+      expect.fail(`Request should fail with inactive access token. Response code: ${response.status}`);
+    }
+    catch (error) {
+      expect(error.response.status).to.equal(401);
+      expect(error.response.data).to.deep.equal({ error: 'Invalid bearer token' });
+    }
 
-        request.get(baseUrl, function(getReq, getRes, getBody) {
-          expect(getRes.statusCode).to.equal(200);
-          expect(JSON.parse(getBody)).to.deep.equal({count: 1});
+    try {
+      const response = await axios.delete(baseUrl, {
+        headers: {
+          Authorization:  'bearer {"active": true}',
+          'Content-Type': 'application/json',
+        },
+        responseType:     'json',
+        responseEncoding: 'utf8',
+      });
+      expect.fail(`Request should fail with a userless bearer token. Response code: ${response.status}`);
+    }
+    catch (error) {
+      expect(error.response.status).to.equal(401);
+      expect(error.response.data).to.deep.equal({ error: 'Invalid bearer token' });
+    }
 
-          done();
-        });
-      }, 1000);
+    const response = await axios.delete(baseUrl, {
+      headers: {
+        Authorization:  'bearer {"active": true, "sub": "user"}',
+        'Content-Type': 'application/json',
+      },
+      responseType:     'json',
+      responseEncoding: 'utf8',
     });
+    expect(response.status).to.equal(204);
+    expect(response.data).to.equal('');
   });
 });

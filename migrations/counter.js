@@ -1,8 +1,10 @@
 'use strict';
 
 exports.up = function up(knex) {
-  return knex.schema.createTable('counter', table => {
-    table.bigInteger('count').default(0).unsigned().notNullable();
+  return knex.schema.createTable('counter', (table) => {
+    table.bigInteger('count').default(0)
+      .unsigned()
+      .notNullable();
   });
 };
 

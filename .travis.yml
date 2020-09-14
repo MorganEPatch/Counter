@@ -1,20 +1,24 @@
 language: node_js
 node_js:
-    - "8.9"
+    - "14"
+    - "12"
 addons:
-  postgresql: "9.3"
+  postgresql: "9.4"
   apt:
+    update: true
     sources:
       - ubuntu-toolchain-r-test
     packages:
-      - g++-4.8
+      - g++-9
+services:
+  - postgresql
 script:
   - npm test
   - npm run test_pg
   - npm run linter
 before_script:
-  - psql -c 'create database counter;' -U postgres
+  - psql -c 'create database counter;' -U postgres -h localhost -p 5432
 git:
     submodules: false
 env:
-  - CXX=g++-4.8 TEST_PG_CONNECTION_STRING=postgres://postgres@localhost:5432/counter
+  - CXX=g++-9 PGPORT=5432 TEST_PG_CONNECTION_STRING=postgres://postgres@localhost:5432/counter

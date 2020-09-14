@@ -3,14 +3,27 @@
 
 const express = require('express');
 const bodyParser = require('body-parser');
+const cors = require('cors');
+const helmet = require('helmet');
 
 const knexfile = require('../knexfile');
-const db = process.env.NODE_ENV || 'development';
-const knex = require('knex')(knexfile[db]);
+const dbName = process.env.NODE_ENV || 'development';
+const knex = require('knex')(knexfile[dbName]);
 
 const app = express();
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended: true}));
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// By default, all CORS requests are allowed
+app.use(cors());
+
+// Enable standard protections, such as xss filters, CSP headers, etc. We don't expect to have SSL, so disable HSTS.
+app.use(helmet({
+  hsts: false,
+}));
+
+const DEFAULT_PORT = 8000;
+app.set('port', process.env.PORT || DEFAULT_PORT);
 
 app.set('knex', knex);
 
@@ -18,58 +31,84 @@ const prefix = 'service';
 app.set('prefix', prefix);
 
 /*
- * Catch errors due to malformed or invalid JSON in request bodies and
- * return a 400 error
+ * Catch errors due to malformed or invalid JSON in request bodies and return a 400 error.
  */
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400) {
-    return res.status(400).send({error: 400});
+    return res.status(400).send({ error: 400 });
   }
-  next();
+
+  return next();
 });
 
-module.exports = app;
-
-let count = 0;
-
-app.listen(process.env.PORT || 8000, () => {
-  console.log('App now listening on %s', process.env.PORT || 8000);
+const server = app.listen(process.env.PORT || DEFAULT_PORT, () => {
+  console.log('App now listening on %s', process.env.PORT || DEFAULT_PORT);
 });
 
-app.get('/', (req, res) => {
-  return app.get('knex')('counter').select('count').first().then(c => {
-    const cnt = Number.parseInt(c.count, 10);
+module.exports = { app, server };
 
-    return res.send({count: cnt});
-  }).error(() => {
-    return res.status(500).send({error: true});
-  });
+app.get('/', async (req, res) => {
+  const db = app.get('knex');
+
+  try {
+    let count = await db('counter')
+      .select('count')
+      .first();
+
+    count = parseInt(count.count, 10);
+
+    res.status(200).send({ count, README: 'https://github.com/MorganEPatch/Counter' });
+  }
+  catch (error) {
+    res.status(500).send({ error });
+  }
 });
 
-app.post('/', (req, res) => {
-  return app.get('knex')('counter').update({count: ++count}).then(rows => {
+app.post('/', async (req, res) => {
+  const db = app.get('knex');
+
+  try {
+    const rows = await db('counter')
+      .increment('count', 1);
+
     if (rows) {
-      return res.status(200).send();
+      res.status(204).send();
+      return;
     }
 
-    return res.status(500).send({error: true});
-  }).error(() => {
-    return res.status(500).send({error: true});
-  });
+    res.status(500).send({ error: true });
+  }
+  catch (error) {
+    res.status(500).send({ error });
+  }
 });
 
-setTimeout(() => {
-  app.get('knex')('counter').select('count').then(c => {
-    if (!c || c.length === 0) {
-      app.get('knex')('counter').insert({count: 0}).then(() => {}).error(() => {
-        throw new Error('Database Error!');
-      });
-    } else {
-      count = c[0].count;
-    }
-  });
-}, 500);
+app.delete('/', async (req, res) => {
+  const auth = req.header('Authorization');
+  if (!auth || !auth.toLowerCase().startsWith('bearer')) {
+    res.status(401).send({ error: 'Missing bearer token' });
+    return;
+  }
 
-app.get(`/${prefix}/$`, (req, res) => {
-  res.status(404).send({error: 404});
+  const token = JSON.parse(auth.substring('bearer '.length));
+  if (!token || !token.active || !token.sub) {
+    res.status(401).send({ error: 'Invalid bearer token' });
+    return;
+  }
+
+  const db = app.get('knex');
+  try {
+    const rows = await db('counter')
+      .update({ count: 0 });
+
+    if (rows) {
+      res.status(204).send();
+      return;
+    }
+
+    res.status(500).send({ error: true });
+  }
+  catch (error) {
+    res.status(500).send({ error });
+  }
 });

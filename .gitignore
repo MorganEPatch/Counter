@@ -57,3 +57,12 @@ typings/
 # dotenv environment variables file
 .env
 
+# Test coverage results
+.nyc_output/
+
+# Automatically generated databases
+*.sqlite3
+
+# Ignore package-lock
+package-lock.json
+
